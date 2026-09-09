@@ -5,6 +5,12 @@ name: Instalador Windows
 on:
   push:
     tags: ['v*']
+# El token de Actions nace de SOLO LECTURA en los repos nuevos, y
+# electron-builder necesita CREAR el release para subir el instalador:
+# sin esta linea el build muere en el ultimo paso con un 403.
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
