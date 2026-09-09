@@ -1,0 +1,18 @@
+# Compila el instalador .exe en Windows SIN necesitar una PC Windows:
+# se desarrolla en el Mac, se etiqueta una versión (git tag v0.1.0 && git
+# push --tags) y este workflow publica el instalador en Releases.
+name: Instalador Windows
+on:
+  push:
+    tags: ['v*']
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm ci
+      - run: npx electron-builder --win --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

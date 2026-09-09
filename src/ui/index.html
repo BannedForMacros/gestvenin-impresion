@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>GestVenin Impresión</title>
+<style>
+    :root {
+        --azul: #1d4ed8; --azul-osc: #1e40af; --verde: #059669; --rojo: #dc2626;
+        --gris: #6b7280; --fondo: #f5f6f8; --borde: #e5e7eb; --ambar: #b45309;
+    }
+    * { box-sizing: border-box; margin: 0; }
+    body { font: 14px/1.45 'Segoe UI', system-ui, sans-serif; background: var(--fondo); color: #111827; }
+    .top { display: flex; align-items: center; gap: 12px; padding: 14px 20px; background: #fff; border-bottom: 1px solid var(--borde); }
+    .logo { width: 38px; height: 38px; border-radius: 10px; background: var(--azul); color: #fff; display: grid; place-items: center; font-weight: 800; font-size: 17px; }
+    .top h1 { font-size: 16px; }
+    .top .sub { color: var(--gris); font-size: 12px; }
+    .estado-ws { margin-left: auto; display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: var(--gris); }
+    .punto { width: 9px; height: 9px; border-radius: 50%; background: #d1d5db; }
+    .punto.on { background: var(--verde); box-shadow: 0 0 0 3px #05966922; }
+    .punto.off { background: var(--rojo); }
+    main { padding: 18px 20px; max-width: 860px; margin: 0 auto; }
+    .card { background: #fff; border: 1px solid var(--borde); border-radius: 14px; padding: 16px; margin-bottom: 14px; }
+    .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--gris); margin-bottom: 10px; }
+    label { display: block; font-weight: 600; margin-bottom: 5px; }
+    input[type=text] { width: 100%; padding: 10px 12px; border: 1.5px solid var(--borde); border-radius: 9px; font: inherit; }
+    input[type=text]:focus { outline: none; border-color: var(--azul); }
+    .btn { display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; border: 0; border-radius: 9px; font: inherit; font-weight: 700; cursor: pointer; background: var(--azul); color: #fff; }
+    .btn:hover { background: var(--azul-osc); }
+    .btn:disabled { opacity: .55; cursor: default; }
+    .btn.sec { background: #fff; color: #374151; border: 1.5px solid var(--borde); }
+    .btn.sec:hover { background: var(--fondo); }
+    .fila-imp { display: flex; align-items: center; gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--fondo); }
+    .fila-imp:last-child { border-bottom: 0; }
+    .fila-imp .icono { width: 34px; height: 34px; border-radius: 9px; background: var(--fondo); display: grid; place-items: center; font-size: 16px; }
+    .fila-imp .datos { flex: 1; min-width: 0; }
+    .fila-imp .nombre { font-weight: 700; }
+    .fila-imp .detalle { font-size: 12px; color: var(--gris); }
+    .chip { font-size: 11px; font-weight: 800; padding: 3px 9px; border-radius: 999px; background: var(--fondo); color: var(--gris); text-transform: uppercase; }
+    .chip.caja { background: #dbeafe; color: var(--azul-osc); }
+    .chip.cocina { background: #ffedd5; color: var(--ambar); }
+    .aviso { padding: 11px 14px; border-radius: 10px; font-size: 13px; margin-bottom: 12px; display: none; }
+    .aviso.err { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; display: block; }
+    .aviso.ok { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; display: block; }
+    .aviso.warn { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; display: block; }
+    .hist { font-size: 13px; width: 100%; border-collapse: collapse; }
+    .hist td { padding: 7px 6px; border-bottom: 1px solid var(--fondo); }
+    .hist .ok { color: var(--verde); font-weight: 700; }
+    .hist .fallo { color: var(--rojo); font-weight: 700; }
+    .vacio { color: var(--gris); text-align: center; padding: 22px 0; }
+    .oculto { display: none !important; }
+    .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid #fff5; border-top-color: #fff; border-radius: 50%; animation: g .8s linear infinite; }
+    @keyframes g { to { transform: rotate(360deg); } }
+    .pie-config { font-size: 12px; color: var(--gris); margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<div class="top">
+    <div class="logo">GV</div>
+    <div>
+        <h1>GestVenin Impresión</h1>
+        <div class="sub">Agente del local — imprime lo que el ERP mande</div>
+    </div>
+    <div class="estado-ws"><span id="puntoWs" class="punto"></span><span id="txtWs">conectando…</span></div>
+</div>
+
+<main>
+    <div id="avisos"></div>
+
+    <!-- PASO 1: token (solo la primera vez) -->
+    <section id="paso-token" class="card oculto">
+        <h2>Conectar con el ERP</h2>
+        <p style="margin-bottom:12px">
+            Pega el <b>token de impresión del local</b>. Está en el ERP:
+            <b>Configuración → Locales → (tu local) → Token de impresora</b>.
+        </p>
+        <label for="token">Token del local</label>
+        <input type="text" id="token" placeholder="Pega aquí el token…" autocomplete="off">
+        <div style="margin-top:12px">
+            <button class="btn" id="btnConectar">Conectar</button>
+        </div>
+    </section>
+
+    <!-- IMPRESORAS -->
+    <section id="paso-impresoras" class="card oculto">
+        <h2 style="display:flex;align-items:center;justify-content:space-between">
+            Impresoras
+            <button class="btn sec" id="btnBuscar" style="font-size:12.5px;padding:6px 12px">Buscar impresoras</button>
+        </h2>
+        <div id="listaImpresoras"><div class="vacio">Pulsa «Buscar impresoras» para encontrar las del local.</div></div>
+        <p class="pie-config">
+            El papel de cada impresora (<b>caja</b> o <b>cocina</b>) se asigna desde la web del ERP,
+            en la pantalla de impresoras del local. Aquí solo se descubren y se prueban.
+        </p>
+    </section>
+
+    <!-- HISTORIAL -->
+    <section id="paso-historial" class="card oculto">
+        <h2>Últimos trabajos</h2>
+        <table class="hist"><tbody id="cuerpoHist">
+            <tr><td class="vacio">Todavía no ha salido ningún ticket.</td></tr>
+        </tbody></table>
+    </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const halladas = new Map();
+
+function aviso(clase, texto, ms = 6000) {
+    const div = document.createElement('div');
+    div.className = 'aviso ' + clase;
+    div.textContent = texto;
+    $('avisos').prepend(div);
+    if (ms) setTimeout(() => div.remove(), ms);
+}
+
+function pintarImpresoras() {
+    const cont = $('listaImpresoras');
+    if (!halladas.size) return;
+    cont.innerHTML = '';
+    for (const imp of halladas.values()) {
+        const fila = document.createElement('div');
+        fila.className = 'fila-imp';
+        fila.innerHTML = `
+            <div class="icono">${imp.conexion === 'usb' ? '🔌' : '🖧'}</div>
+            <div class="datos">
+                <div class="nombre">${imp.nombre}</div>
+                <div class="detalle">${imp.conexion === 'usb'
+                    ? 'USB · ' + (imp.spooler_nombre || '')
+                    : 'Red · ' + imp.host + ':' + (imp.puerto || 9100)}</div>
+            </div>
+            ${imp.destino ? `<span class="chip ${imp.destino}">${imp.destino}</span>` : '<span class="chip">sin asignar</span>'}
+            <button class="btn sec" style="font-size:12px;padding:6px 11px">Imprimir prueba</button>`;
+        fila.querySelector('button').onclick = async (e) => {
+            const b = e.target; b.disabled = true; b.textContent = 'Imprimiendo…';
+            try {
+                await window.agente.probarImpresora(imp);
+                aviso('ok', `Prueba enviada a «${imp.nombre}». Revisa el papel.`);
+            } catch (err) {
+                aviso('err', `«${imp.nombre}»: ${err.message.replace(/^.*Error: /, '')}`, 10000);
+            }
+            b.disabled = false; b.textContent = 'Imprimir prueba';
+        };
+        cont.appendChild(fila);
+    }
+}
+
+function pintarHistorial(hist) {
+    if (!hist?.length) return;
+    $('cuerpoHist').innerHTML = hist.map((h) => `
+        <tr>
+            <td>${h.hora}</td>
+            <td><b>${h.tipo === 'comanda_delivery' ? 'Comanda' : h.tipo === 'cierre_caja' ? 'Cierre' : 'Ticket'}</b> #${h.id}</td>
+            <td><span class="chip ${h.destino || ''}">${h.destino || '—'}</span></td>
+            <td>${h.impresora || ''}</td>
+            <td class="${h.resultado === 'impreso' ? 'ok' : 'fallo'}">${h.resultado === 'impreso' ? '✓ impreso' : '✗ ' + (h.error || 'falló')}</td>
+        </tr>`).join('');
+}
+
+// ── conexión ──────────────────────────────────────────────────────────
+
+$('btnConectar').onclick = async () => {
+    const token = $('token').value.trim();
+    if (!token) return aviso('err', 'Pega el token del local.');
+    const b = $('btnConectar'); b.disabled = true; b.innerHTML = '<span class="spin"></span> Validando…';
+    try {
+        await window.agente.guardarToken({ token });
+        aviso('ok', 'Conectado con el ERP. Ahora busca las impresoras.');
+        $('paso-token').classList.add('oculto');
+        $('paso-impresoras').classList.remove('oculto');
+        $('paso-historial').classList.remove('oculto');
+        $('btnBuscar').click();
+    } catch (e) {
+        aviso('err', /TOKEN_INVALIDO/.test(e.message)
+            ? 'Ese token no es de ningún local. Cópialo de nuevo desde el ERP.'
+            : 'No se pudo conectar: ' + e.message, 10000);
+    }
+    b.disabled = false; b.textContent = 'Conectar';
+};
+
+$('btnBuscar').onclick = async () => {
+    const b = $('btnBuscar'); b.disabled = true; b.textContent = 'Buscando…';
+    $('listaImpresoras').innerHTML = '<div class="vacio">Buscando por USB, red y Bonjour…</div>';
+    halladas.clear();
+    try {
+        const lista = await window.agente.descubrir();
+        if (!lista.length) {
+            $('listaImpresoras').innerHTML = '<div class="vacio">No se encontró ninguna impresora.<br>Revisa que estén encendidas y en la misma red.</div>';
+        }
+    } catch (e) { aviso('err', 'La búsqueda falló: ' + e.message); }
+    b.disabled = false; b.textContent = 'Buscar impresoras';
+};
+
+// las halladas van apareciendo EN VIVO, según cada canal las reporta
+window.agente.alHallar((imp) => {
+    halladas.set(imp.identidad, { ...halladas.get(imp.identidad), ...imp });
+    pintarImpresoras();
+});
+
+window.agente.alWs((on) => {
+    $('puntoWs').className = 'punto ' + (on ? 'on' : 'off');
+    $('txtWs').textContent = on ? 'en línea (reacciona al instante)' : 'sin conexión en vivo — usando respaldo';
+});
+
+window.agente.alCambiarEstado((d) => {
+    // la config asignada en la web (destinos) se refleja aquí
+    for (const imp of d.impresoras || []) {
+        const previa = [...halladas.values()].find((h) => h.host === imp.host || (imp.spooler_nombre && h.spooler_nombre === imp.spooler_nombre));
+        if (previa) { previa.destino = imp.destino; previa.ancho_papel = imp.ancho_papel; }
+        else halladas.set('cfg:' + imp.id, imp);
+    }
+    pintarImpresoras();
+    pintarHistorial(d.historial);
+});
+
+window.agente.alTrabajo(async () => pintarHistorial((await window.agente.resumen())?.historial));
+window.agente.alSinImpresora(() => aviso('warn', 'Llegó un ticket pero no hay ninguna impresora configurada. Busca impresoras y asigna su papel en el ERP.', 12000));
+window.agente.alCambiarEstado; // (los listeners ya están arriba)
+
+// ── arranque ──────────────────────────────────────────────────────────
+
+(async () => {
+    const cfg = await window.agente.leerConfig();
+    if (cfg.token) {
+        $('paso-impresoras').classList.remove('oculto');
+        $('paso-historial').classList.remove('oculto');
+        const r = await window.agente.resumen();
+        if (r) {
+            for (const imp of r.impresoras || []) halladas.set('cfg:' + (imp.identidad || imp.id), imp);
+            pintarImpresoras();
+            pintarHistorial(r.historial);
+            $('puntoWs').className = 'punto ' + (r.wsConectado ? 'on' : 'off');
+            $('txtWs').textContent = r.wsConectado ? 'en línea (reacciona al instante)' : 'conectando…';
+        }
+    } else {
+        $('paso-token').classList.remove('oculto');
+    }
+})();
+</script>
+</body>
+</html>

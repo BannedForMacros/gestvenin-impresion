@@ -1,0 +1,21 @@
+appId: com.macsoft.gestvenin.impresion
+productName: GestVenin Impresión
+directories:
+  output: dist
+files:
+  - src/**/*
+  - package.json
+win:
+  target: nsis
+  # Sin firma por ahora: Windows mostrará el aviso de "editor desconocido"
+  # la primera vez. Se firma cuando el flujo esté probado en los locales.
+nsis:
+  oneClick: true
+  perMachine: false
+  runAfterFinish: true
+mac:
+  target: dir
+publish:
+  provider: github
+  owner: BannedForMacros
+  repo: gestvenin-impresion
