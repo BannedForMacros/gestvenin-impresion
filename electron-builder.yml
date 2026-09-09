@@ -19,3 +19,6 @@ publish:
   provider: github
   owner: BannedForMacros
   repo: gestvenin-impresion
+  # Sin esto, el instalador queda en un release BORRADOR que solo ve el
+  # dueño del repo: parecía que el build no publicaba nada.
+  releaseType: release
