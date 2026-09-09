@@ -105,6 +105,12 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
+
+// Íconos de lucide (lucide.dev, licencia ISC) incrustados como SVG: este
+// renderer es HTML plano sin React, y un emoji se ve distinto en cada
+// Windows — el trazo vectorial se ve igual en todos.
+const ICONO_USB = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="7" r="1"/><circle cx="4" cy="20" r="1"/><path d="M4.7 19.3 19 5"/><path d="m21 3-3 1 2 2Z"/><path d="M9.26 7.68 5 12l2 5"/><path d="m10 14 5 2 3.5-3.5"/><path d="m18 12 1-1 1 1-1 1Z"/></svg>';
+const ICONO_RED = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/></svg>';
 const halladas = new Map();
 
 function aviso(clase, texto, ms = 6000) {
@@ -123,7 +129,7 @@ function pintarImpresoras() {
         const fila = document.createElement('div');
         fila.className = 'fila-imp';
         fila.innerHTML = `
-            <div class="icono">${imp.conexion === 'usb' ? '🔌' : '🖧'}</div>
+            <div class="icono">${imp.conexion === 'usb' ? ICONO_USB : ICONO_RED}</div>
             <div class="datos">
                 <div class="nombre">${imp.nombre}</div>
                 <div class="detalle">${imp.conexion === 'usb'
