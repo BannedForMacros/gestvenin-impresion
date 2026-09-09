@@ -173,12 +173,15 @@ class MotorImpresion extends EventEmitter {
 
         while (cola.length && this.corriendo) {
             const trabajo = cola[0];
-            const destino = trabajo.destino || 'caja';
 
-            // La impresora asignada a ese destino; si no hay ninguna
-            // asignada, cae a cualquiera activa (el local de una sola
-            // impresora no tiene por qué configurar destinos).
-            const imp = this.impresoras.find((i) => i.destino === destino)
+            // Nada cableado: el destino es el texto que el dueño configuró
+            // en el ERP («caja», «cocina», «segundo-piso»...). Un trabajo
+            // SIN destino sale por cualquier impresora asignada; con
+            // destino, por la que coincida exacto, y si esa no existe se
+            // cae a cualquiera antes que no imprimir.
+            const destino = trabajo.destino || null;
+
+            const imp = (destino && this.impresoras.find((i) => i.destino === destino))
                 ?? this.impresoras.find((i) => i.destino)
                 ?? this.impresoras[0];
 
