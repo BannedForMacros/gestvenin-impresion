@@ -194,6 +194,12 @@ function ticketVenta(p, ancho) {
     t.grande().dosColumnas('TOTAL', money(p.total)).grande(false);
 
     for (const m of p.metodosPago || []) t.dosColumnas(m.metodo, money(m.monto));
+
+    // Recibido y vuelto: el papel que zanja «me diste mal el cambio».
+    if (p.pagaCon != null) {
+        t.dosColumnas('Recibido', money(p.pagaCon));
+        t.negrita().dosColumnas('VUELTO', money(p.vuelto)).negrita(false);
+    }
     if (p.subtotal_letras) { t.separador(); t.parrafo('SON: ' + p.subtotal_letras); }
     if (p.aviso) { t.separador(); t.centrar().linea(p.aviso); }
 
