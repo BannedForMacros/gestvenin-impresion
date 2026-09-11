@@ -46,12 +46,24 @@ function imprimirSpooler(nombreSpooler, bytes) {
         const tmp = path.join(os.tmpdir(), `gv-ticket-${Date.now()}-${Math.random().toString(36).slice(2)}.bin`);
         fs.writeFileSync(tmp, bytes);
 
-        const ps1 = path.join(__dirname, 'raw-print.ps1');
+        // Instalado, el código vive dentro de app.asar y PowerShell NO puede
+        // abrir un .ps1 de ahí con -File ("el argumento para -File no
+        // existe"). Node sí lee dentro del asar, así que el script se lee
+        // aquí y se le entrega a PowerShell ya codificado (-EncodedCommand):
+        // ninguna ruta de por medio, en ninguna PC. Los parámetros van por
+        // variables de entorno, que no tienen problemas de comillas ni de
+        // longitud con nombres de impresora raros.
+        const script = fs.readFileSync(path.join(__dirname, 'raw-print.ps1'), 'utf8');
+        const codificado = Buffer.from(script, 'utf16le').toString('base64');
 
         execFile(
             'powershell.exe',
-            ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ps1, '-Printer', nombreSpooler, '-File', tmp],
-            { timeout: 20000, windowsHide: true },
+            ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', codificado],
+            {
+                timeout: 20000,
+                windowsHide: true,
+                env: { ...process.env, GV_IMPRESORA: nombreSpooler, GV_ARCHIVO: tmp },
+            },
             (err, _stdout, stderr) => {
                 fs.unlink(tmp, () => {});
                 if (err) {

@@ -3,12 +3,16 @@
 # Es el RawPrinterHelper clásico de la documentación de Microsoft, registrado
 # al vuelo con Add-Type. Se usa para las impresoras USB: las de red van por
 # socket directo al 9100 y no pasan por aquí.
-param(
-    [Parameter(Mandatory = $true)][string]$Printer,
-    [Parameter(Mandatory = $true)][string]$File
-)
-
+#
+# No se ejecuta como fichero: imprimir.js lo manda entero por -EncodedCommand
+# (instalado vive dentro de app.asar, donde powershell -File no llega) y pasa
+# la impresora y el fichero de bytes por variables de entorno.
 $ErrorActionPreference = 'Stop'
+
+$Printer = $env:GV_IMPRESORA
+$File = $env:GV_ARCHIVO
+if (-not $Printer) { throw 'Falta el nombre de la impresora (GV_IMPRESORA).' }
+if (-not $File -or -not (Test-Path -LiteralPath $File)) { throw "No existe el fichero de bytes a imprimir: $File" }
 
 Add-Type -TypeDefinition @'
 using System;

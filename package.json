@@ -1,7 +1,7 @@
 {
   "name": "gestvenin-impresion",
   "productName": "GestVenin Impresión",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Agente de impresión de GestVenin: recibe los tickets del ERP y los imprime en las térmicas del local.",
   "main": "src/main.js",
   "author": "MacSoft",
