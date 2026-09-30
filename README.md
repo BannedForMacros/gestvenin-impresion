@@ -15,7 +15,19 @@ Reverb) en vez de vivir preguntando si hay algo.
   destino se asigna **desde la web del ERP**, no aquí.
 - **Cola en disco**: si se corta internet o la luz, lo pendiente sale al
   volver, en orden y sin repetirse.
-- **Se actualiza solo** desde las publicaciones de GitHub.
+- **Imprime boletas y facturas electrónicas** (`comprobante_electronico`):
+  razón social, RUC y domicilio fiscal del RUC que emitió, serie-número,
+  Op. Gravada / IGV, QR SUNAT nativo de la térmica y la leyenda de
+  representación impresa.
+- **Se actualiza con un clic**: busca versión nueva al arrancar y cada 4
+  horas, la descarga sola y muestra «Actualizar ahora» en la ventana
+  (reinicia en segundos). La versión instalada se ve arriba.
+
+## Novedades
+
+- **0.2.0** — Boleta/factura electrónica impresa con los datos del RUC
+  emisor y QR. Botón «Actualizar ahora». Incluye lo de 0.1.8 (Recibido y
+  VUELTO en el ticket), que no llegó a publicarse.
 
 ## Instalar en el local
 
@@ -41,7 +53,7 @@ Windows.
 ## Publicar una versión
 
 ```bash
-git tag v0.1.0 && git push --tags
+git tag v0.2.0 && git push --tags   # la etiqueta = la versión del package.json
 ```
 
 GitHub Actions compila el instalador en un runner Windows y lo publica en

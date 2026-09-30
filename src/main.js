@@ -148,6 +148,64 @@ ipcMain.handle('reimprimir', async (_e, entrada) => {
     return { ok: true };
 });
 
+// ── actualizaciones (GitHub Releases) ─────────────────────────────────
+//
+// Antes solo se buscaba al arrancar y se instalaba al salir. Pero el agente
+// arranca con Windows y vive en la bandeja sin cerrarse nunca: en la
+// práctica no se actualizaba. Ahora busca cada 4 horas, descarga solo y
+// deja un botón «Actualizar ahora» que reinicia en segundos.
+
+const CADA_4_HORAS = 4 * 60 * 60 * 1000;
+let updater = null;
+let estadoUpdate = { estado: 'inactivo' };
+
+function avisarUpdate(estado, datos = {}) {
+    estadoUpdate = { estado, ...datos };
+    ventana?.webContents.send('update:estado', estadoUpdate);
+}
+
+function buscarActualizacion() {
+    if (!updater) {
+        avisarUpdate('error', { mensaje: 'Las actualizaciones solo funcionan en la versión instalada.' });
+        return;
+    }
+    updater.checkForUpdates().catch((e) => avisarUpdate('error', { mensaje: e?.message || String(e) }));
+}
+
+function iniciarActualizaciones() {
+    try {
+        ({ autoUpdater: updater } = require('electron-updater'));
+    } catch { return; /* en desarrollo no hay updater */ }
+    if (!app.isPackaged) { updater = null; return; }
+
+    updater.autoDownload = true;
+    updater.on('checking-for-update', () => avisarUpdate('buscando'));
+    updater.on('update-available', (i) => avisarUpdate('disponible', { version: i?.version }));
+    updater.on('update-not-available', () => avisarUpdate('al-dia'));
+    updater.on('download-progress', (p) => avisarUpdate('descargando', {
+        version: estadoUpdate.version, porcentaje: Math.round(p?.percent || 0),
+    }));
+    updater.on('update-downloaded', (i) => avisarUpdate('lista', { version: i?.version }));
+    updater.on('error', (e) => avisarUpdate('error', { mensaje: e?.message || String(e) }));
+
+    // La notificación de Windows se mantiene para quien no abre la ventana.
+    updater.checkForUpdatesAndNotify().catch((e) => avisarUpdate('error', { mensaje: e?.message || String(e) }));
+    setInterval(buscarActualizacion, CADA_4_HORAS);
+}
+
+ipcMain.handle('update:version', () => app.getVersion());
+ipcMain.handle('update:estado', () => estadoUpdate);
+ipcMain.handle('update:buscar', () => { buscarActualizacion(); return estadoUpdate; });
+ipcMain.handle('update:instalar', () => {
+    if (!updater || estadoUpdate.estado !== 'lista') throw new Error('Todavía no hay una versión descargada.');
+    // Sin la bandera, el `close` de la ventana (arriba) la esconde en vez de
+    // cerrarla y la instalación se queda esperando para siempre.
+    app.saliendo = true;
+    motor?.parar();
+    setImmediate(() => updater.quitAndInstall(true, true)); // silenciosa y vuelve a abrir
+    return { ok: true };
+});
+
 // ── arranque ──────────────────────────────────────────────────────────
 
 const unico = app.requestSingleInstanceLock();
@@ -171,11 +229,7 @@ if (!unico) {
         // silencio: directo a la bandeja.
         if (!leerConfig().token) abrirVentana();
 
-        // Actualización automática desde GitHub Releases, sin molestar.
-        try {
-            const { autoUpdater } = require('electron-updater');
-            autoUpdater.checkForUpdatesAndNotify().catch(() => {});
-        } catch { /* en desarrollo no hay updater */ }
+        iniciarActualizaciones();
     });
 
     app.on('window-all-closed', () => { /* la bandeja mantiene vivo el agente */ });

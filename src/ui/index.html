@@ -51,6 +51,12 @@
     .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid #fff5; border-top-color: #fff; border-radius: 50%; animation: g .8s linear infinite; }
     @keyframes g { to { transform: rotate(360deg); } }
     .pie-config { font-size: 12px; color: var(--gris); margin-top: 8px; }
+    .version { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--gris); }
+    .version .btn { font-size: 12px; padding: 5px 10px; }
+    .banner-update { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; margin-bottom: 14px; background: #eff6ff; border: 1px solid #bfdbfe; color: var(--azul-osc); }
+    .banner-update .texto { flex: 1; }
+    .banner-update b { display: block; }
+    .banner-update .detalle { font-size: 12.5px; color: #1e3a8a; }
 </style>
 </head>
 <body>
@@ -64,7 +70,23 @@
     <div class="estado-ws"><span id="puntoWs" class="punto"></span><span id="txtWs">conectando…</span></div>
 </div>
 
+<div class="version" style="padding:8px 20px;background:#fff;border-bottom:1px solid var(--borde)">
+    <span>Versión <b id="txtVersion">—</b></span>
+    <span id="txtUpdate"></span>
+    <button class="btn sec" id="btnBuscarUpdate" style="margin-left:auto"></button>
+</div>
+
 <main>
+    <!-- ACTUALIZACIÓN LISTA: un clic y reinicia en la versión nueva -->
+    <div id="bannerUpdate" class="banner-update oculto">
+        <span id="iconoUpdate"></span>
+        <div class="texto">
+            <b id="tituloUpdate">Nueva versión lista</b>
+            <span class="detalle">Tarda unos segundos: el agente se cierra, se instala y vuelve a abrirse solo.</span>
+        </div>
+        <button class="btn" id="btnInstalarUpdate"></button>
+    </div>
+
     <div id="avisos"></div>
 
     <!-- PASO 1: token (solo la primera vez) -->
@@ -111,6 +133,8 @@ const $ = (id) => document.getElementById(id);
 // Windows — el trazo vectorial se ve igual en todos.
 const ICONO_USB = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="7" r="1"/><circle cx="4" cy="20" r="1"/><path d="M4.7 19.3 19 5"/><path d="m21 3-3 1 2 2Z"/><path d="M9.26 7.68 5 12l2 5"/><path d="m10 14 5 2 3.5-3.5"/><path d="m18 12 1-1 1 1-1 1Z"/></svg>';
 const ICONO_RED = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#4b5563" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/></svg>';
+const ICONO_BUSCAR = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>';
+const ICONO_DESCARGA = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>';
 const halladas = new Map();
 
 function aviso(clase, texto, ms = 6000) {
@@ -157,7 +181,7 @@ function pintarHistorial(hist) {
     $('cuerpoHist').innerHTML = hist.map((h) => `
         <tr>
             <td>${h.hora}</td>
-            <td><b>${h.tipo === 'comanda_delivery' ? 'Comanda' : h.tipo === 'cierre_caja' ? 'Cierre' : 'Ticket'}</b> #${h.id}</td>
+            <td><b>${{ comanda_delivery: 'Comanda', cierre_caja: 'Cierre', comprobante_electronico: 'Comprobante' }[h.tipo] || 'Ticket'}</b> #${h.id}</td>
             <td><span class="chip ${h.destino || ''}">${h.destino || '—'}</span></td>
             <td>${h.impresora || ''}</td>
             <td class="${h.resultado === 'impreso' ? 'ok' : 'fallo'}">${h.resultado === 'impreso' ? '✓ impreso' : '✗ ' + (h.error || 'falló')}</td>
@@ -224,9 +248,52 @@ window.agente.alTrabajo(async () => pintarHistorial((await window.agente.resumen
 window.agente.alSinImpresora(() => aviso('warn', 'Llegó un ticket pero no hay ninguna impresora configurada. Busca impresoras y asigna su papel en el ERP.', 12000));
 window.agente.alCambiarEstado; // (los listeners ya están arriba)
 
+// ── actualizaciones ───────────────────────────────────────────────────
+
+$('btnBuscarUpdate').innerHTML = ICONO_BUSCAR + ' Buscar actualización';
+$('btnInstalarUpdate').innerHTML = ICONO_DESCARGA.replace('20', '16').replace('20', '16') + ' Actualizar ahora';
+$('iconoUpdate').innerHTML = ICONO_DESCARGA;
+
+function pintarUpdate(u) {
+    const txt = {
+        buscando: 'Buscando actualizaciones…',
+        disponible: `Descargando la versión ${u.version || ''}…`,
+        descargando: `Descargando la versión ${u.version || ''}… ${u.porcentaje ?? 0}%`,
+        'al-dia': 'Estás en la última versión.',
+        lista: `Versión ${u.version || ''} descargada.`,
+        error: 'No se pudo buscar la actualización: ' + (u.mensaje || 'error desconocido'),
+    }[u?.estado] || '';
+    $('txtUpdate').textContent = txt;
+    $('txtUpdate').style.color = u?.estado === 'error' ? 'var(--rojo)' : '';
+    $('btnBuscarUpdate').disabled = ['buscando', 'disponible', 'descargando'].includes(u?.estado);
+    $('bannerUpdate').classList.toggle('oculto', u?.estado !== 'lista');
+    if (u?.estado === 'lista') $('tituloUpdate').textContent = `Nueva versión ${u.version || ''} lista`;
+}
+
+$('btnBuscarUpdate').onclick = async () => {
+    try { pintarUpdate(await window.agente.buscarActualizacion()); }
+    catch (e) { pintarUpdate({ estado: 'error', mensaje: e.message }); }
+};
+
+$('btnInstalarUpdate').onclick = async () => {
+    const b = $('btnInstalarUpdate'); b.disabled = true; b.innerHTML = '<span class="spin"></span> Actualizando…';
+    try { await window.agente.instalarActualizacion(); }
+    catch (e) {
+        aviso('err', 'No se pudo actualizar: ' + e.message.replace(/^.*Error: /, ''), 10000);
+        b.disabled = false; b.innerHTML = ICONO_DESCARGA.replace('20', '16').replace('20', '16') + ' Actualizar ahora';
+    }
+};
+
+window.agente.alActualizar(pintarUpdate);
+
 // ── arranque ──────────────────────────────────────────────────────────
 
 (async () => {
+    try {
+        $('txtVersion').textContent = await window.agente.version();
+        pintarUpdate(await window.agente.estadoActualizacion());
+    } catch { /* la ventana funciona igual sin esto */ }
+
     const cfg = await window.agente.leerConfig();
     if (cfg.token) {
         $('paso-impresoras').classList.remove('oculto');

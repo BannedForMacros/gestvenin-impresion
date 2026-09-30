@@ -12,4 +12,10 @@ contextBridge.exposeInMainWorld('agente', {
     alTrabajo: (cb) => ipcRenderer.on('motor:trabajo', (_e, d) => cb(d)),
     alWs: (cb) => ipcRenderer.on('motor:ws', (_e, d) => cb(d)),
     alSinImpresora: (cb) => ipcRenderer.on('motor:sin-impresora', (_e, d) => cb(d)),
+
+    version: () => ipcRenderer.invoke('update:version'),
+    estadoActualizacion: () => ipcRenderer.invoke('update:estado'),
+    buscarActualizacion: () => ipcRenderer.invoke('update:buscar'),
+    instalarActualizacion: () => ipcRenderer.invoke('update:instalar'),
+    alActualizar: (cb) => ipcRenderer.on('update:estado', (_e, d) => cb(d)),
 });
