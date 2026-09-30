@@ -5,6 +5,8 @@
  * El campo `payload.tipo` elige la plantilla:
  *   - 'comanda_delivery'  → la comanda de cocina (sin dinero, letra grande)
  *   - 'cierre_caja'       → el resumen del turno («totalizador»)
+ *   - 'comprobante_electronico' → boleta o factura electrónica: encabezado
+ *                           del RUC emisor, serie-número, IGV y QR SUNAT
  *   - cualquier otro/nada → ticket de venta o pre-cuenta, el formato que ya
  *                           emiten el POS y las mesas (payload con
  *                           ticketNumber, productos, metodosPago...). Así el
@@ -74,6 +76,32 @@ class Ticket {
         }
         if (renglon.trim()) this.linea(' '.repeat(sangria) + renglon.trim());
         return this;
+    }
+
+    /**
+     * Letra pequeña (fuente B): leyendas y hash. Cabe más por renglón, así
+     * que el ancho de `parrafo()` se ajusta mientras está activa.
+     */
+    chico(on = true) {
+        if (on && !this.colsNormal) { this.colsNormal = this.cols; this.cols = this.cols === 32 ? 42 : 64; }
+        if (!on && this.colsNormal) { this.cols = this.colsNormal; this.colsNormal = null; }
+        return this.raw(ESC, 0x4d, on ? 1 : 0);
+    }
+
+    /**
+     * Código QR nativo de la impresora (GS ( k, modelo 2, corrección M). Lo
+     * dibuja la propia térmica: nada de imágenes que dependan del modelo.
+     */
+    qr(datos, modulo = 6) {
+        const d = Buffer.from(String(datos), 'ascii');
+        const largo = d.length + 3;
+        this.raw(GS, 0x28, 0x6b, 4, 0, 0x31, 0x41, 0x32, 0x00);                // modelo 2
+        this.raw(GS, 0x28, 0x6b, 3, 0, 0x31, 0x43, modulo);                    // tamaño del módulo
+        this.raw(GS, 0x28, 0x6b, 3, 0, 0x31, 0x45, 0x31);                      // corrección M
+        this.raw(GS, 0x28, 0x6b, largo & 0xff, largo >> 8, 0x31, 0x50, 0x30);  // guardar…
+        this.partes.push(d);
+        this.raw(GS, 0x28, 0x6b, 3, 0, 0x31, 0x51, 0x30);                      // …e imprimir
+        return this.linea('');
     }
 
     cortar() {
@@ -208,6 +236,101 @@ function ticketVenta(p, ancho) {
     return t.cortar().bytes();
 }
 
+/**
+ * Representación impresa de una BOLETA o FACTURA electrónica.
+ *
+ * El encabezado es el del RUC que emitió (razón social, RUC, domicilio
+ * fiscal), no el del local: con varios RUC en una empresa, cada local
+ * factura con el suyo y el papel tiene que decir cuál. El local va debajo,
+ * como nombre comercial y establecimiento.
+ *
+ * Todo llega calculado por el ERP y el emisor (número, IGV, QR): aquí no se
+ * recalcula nada, solo se dibuja. Un campo null no imprime su renglón.
+ */
+function comprobanteElectronico(p, ancho) {
+    const t = new Ticket(ancho);
+    const emisor = p.emisor || {};
+    const local = p.local || {};
+    const doc = p.documento || {};
+    const cli = p.cliente || {};
+    const tot = p.totales || {};
+    const moneda = !tot.moneda || tot.moneda === 'PEN' ? 'S/' : tot.moneda;
+    const money = (n) => moneda + ' ' + Number(n || 0).toFixed(2);
+    const hay = (n) => n != null && n !== '' && Number(n) !== 0;
+    const cant = (n) => String(Number(n || 0));
+
+    // ── emisor y local ──
+    t.centrar();
+    if (emisor.razon_social) t.negrita().parrafo(emisor.razon_social).negrita(false);
+    if (emisor.ruc) t.negrita().linea('RUC ' + emisor.ruc).negrita(false);
+    if (emisor.direccion_fiscal) t.parrafo(emisor.direccion_fiscal);
+    if (local.nombre) t.linea(local.nombre);
+    if (local.direccion) t.parrafo(local.direccion);
+    if (local.telefono) t.linea('Tel: ' + local.telefono);
+    t.separador('=');
+
+    // ── tipo y número ──
+    t.negrita().parrafo(doc.titulo || 'COMPROBANTE ELECTRÓNICO');
+    if (doc.numero) t.alto().linea(doc.numero).alto(false);
+    t.negrita(false);
+    if (doc.prueba) t.negrita().linea('*** PRUEBA - SIN VALOR LEGAL ***').negrita(false);
+    t.separador();
+
+    // ── fecha, quien atiende y cliente ──
+    t.izquierda();
+    if (doc.fecha) t.linea('Fecha: ' + doc.fecha);
+    if (doc.cajero) t.linea('Atiende: ' + doc.cajero);
+    if (doc.mesa) t.linea('Mesa: ' + doc.mesa);
+    if (cli.nombre || !cli.documento) t.parrafo('Cliente: ' + (cli.nombre || 'CLIENTES VARIOS'));
+    if (cli.documento) t.linea(cli.documento);
+    if (cli.direccion) t.parrafo('Dir: ' + cli.direccion);
+    t.separador();
+
+    // ── productos ──
+    t.negrita().dosColumnas('DESCRIPCIÓN', 'IMPORTE').negrita(false);
+    for (const item of p.productos || []) {
+        t.parrafo(item.nombre);
+        t.dosColumnas(`  ${cant(item.cantidad)} x ${money(item.precio_unitario)}`, money(item.total));
+        if (hay(item.descuento)) t.dosColumnas('  Descuento', '-' + money(item.descuento));
+    }
+    t.separador();
+
+    // ── totales: alineados a la derecha, solo lo que tiene importe ──
+    const fila = (etiqueta, valor) => {
+        const v = String(valor);
+        t.linea(etiqueta.padStart(t.cols - 14) + v.padStart(14));
+    };
+    if (hay(tot.gravada)) fila('Op. Gravada', money(tot.gravada));
+    if (hay(tot.exonerada)) fila('Op. Exonerada', money(tot.exonerada));
+    if (hay(tot.inafecta)) fila('Op. Inafecta', money(tot.inafecta));
+    if (hay(tot.descuento)) fila('Descuento', '-' + money(tot.descuento));
+    if (tot.igv != null) fila('IGV' + (tot.igv_tasa ? ` (${Number(tot.igv_tasa)}%)` : ''), money(tot.igv));
+    t.negrita().alto().dosColumnas('TOTAL', money(tot.total)).alto(false).negrita(false);
+    if (p.letras) t.parrafo('SON: ' + p.letras);
+    t.separador();
+
+    // ── pago ──
+    for (const m of p.metodosPago || []) t.dosColumnas(m.metodo, money(m.monto));
+    if (p.pagaCon != null) {
+        t.dosColumnas('Recibido', money(p.pagaCon));
+        t.negrita().dosColumnas('VUELTO', money(p.vuelto)).negrita(false);
+    }
+
+    // ── QR, hash y leyenda SUNAT ──
+    t.centrar();
+    if (p.qr) { t.linea(''); t.qr(p.qr, ancho === 58 ? 4 : 6); }
+    if (p.hash) t.chico().parrafo('Hash: ' + p.hash).chico(false);
+    if ((p.leyenda || []).length) {
+        t.chico();
+        for (const l of p.leyenda) t.parrafo(l);
+        t.chico(false);
+    }
+
+    t.separador('=');
+    t.linea('¡Gracias por su compra!');
+    return t.cortar().bytes();
+}
+
 /** Autoprueba: lo que sale al pulsar «Imprimir prueba» en una impresora. */
 function prueba(nombre, ancho) {
     const t = new Ticket(ancho);
@@ -227,6 +350,7 @@ function render(payload, ancho = 80) {
     switch (payload?.tipo) {
         case 'comanda_delivery': return comandaDelivery(payload, ancho);
         case 'cierre_caja': return cierreCaja(payload, ancho);
+        case 'comprobante_electronico': return comprobanteElectronico(payload, ancho);
         default: return ticketVenta(payload || {}, ancho);
     }
 }
