@@ -189,6 +189,48 @@ function cierreCaja(p, ancho) {
     return t.cortar().bytes();
 }
 
+/**
+ * Vale de gasto: el respaldo firmado de un pago sin comprobante (un técnico,
+ * un servicio). Lo esencial es el monto en letras y las dos firmas.
+ */
+function vale(p, ancho) {
+    const t = new Ticket(ancho);
+    const money = (n) => 'S/ ' + Number(n || 0).toFixed(2);
+
+    t.centrar();
+    if (p.empresa) t.negrita().linea(p.empresa).negrita(false);
+    if (p.ruc) t.linea('RUC ' + p.ruc);
+    t.alto().linea('VALE N° ' + (p.numero || '')).alto(false);
+    t.linea(p.local || '').linea(p.fecha || '');
+    t.separador('=');
+
+    t.izquierda();
+    if (p.entregado_a) {
+        t.negrita().linea('Entregado a:').negrita(false);
+        t.parrafo(p.entregado_a + (p.documento ? ' · ' + p.documento : ''), 2);
+    }
+    t.negrita().linea('Concepto:').negrita(false);
+    t.parrafo(p.concepto || '', 2);
+    if (p.observaciones) t.parrafo(p.observaciones, 2);
+    if (p.comprobante) t.dosColumnas('Comprobante', p.comprobante);
+    if (p.metodo_pago) t.dosColumnas('Pagado con', p.metodo_pago);
+    t.separador();
+
+    t.centrar().grande().linea(money(p.monto)).grande(false);
+    t.parrafo('SON: ' + (p.monto_letras || ''));
+    t.separador();
+
+    t.izquierda().linea('').linea('').linea('');
+    t.centrar().linea('_'.repeat(Math.min(28, t.cols)));
+    t.linea('Entregué conforme');
+    if (p.registrado_por) t.linea(p.registrado_por);
+    t.linea('').linea('').linea('');
+    t.linea('_'.repeat(Math.min(28, t.cols)));
+    t.linea('Recibí conforme');
+    t.linea('DNI: ____________________');
+    return t.cortar().bytes();
+}
+
 /** Ticket de venta / pre-cuenta: el formato que YA emiten POS y mesas. */
 function ticketVenta(p, ancho) {
     const t = new Ticket(ancho);
@@ -351,6 +393,7 @@ function render(payload, ancho = 80) {
         case 'comanda_delivery': return comandaDelivery(payload, ancho);
         case 'cierre_caja': return cierreCaja(payload, ancho);
         case 'comprobante_electronico': return comprobanteElectronico(payload, ancho);
+        case 'vale': return vale(payload, ancho);
         default: return ticketVenta(payload || {}, ancho);
     }
 }
