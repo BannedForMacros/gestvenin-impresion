@@ -200,7 +200,8 @@ function vale(p, ancho) {
     t.centrar();
     if (p.empresa) t.negrita().linea(p.empresa).negrita(false);
     if (p.ruc) t.linea('RUC ' + p.ruc);
-    t.alto().linea('VALE N° ' + (p.numero || '')).alto(false);
+    t.alto().linea(p.titulo || 'VALE').alto(false);
+    t.negrita().linea('N° ' + (p.numero || '')).negrita(false);
     t.linea(p.local || '').linea(p.fecha || '');
     t.separador('=');
 
