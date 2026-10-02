@@ -81,6 +81,9 @@ function crearTray() {
 async function arrancarMotor() {
     const cfg = leerConfig();
     if (!cfg.token) return; // sin token todavía: el asistente lo pedirá
+    // Nunca dos motores: un reintento pendiente o un cambio de token
+    // apagan el anterior antes de arrancar.
+    motor?.parar();
 
     api = new ApiErp(cfg.urlErp || URL_ERP, cfg.token);
     motor = new MotorImpresion(api, app.getPath('userData'));
@@ -95,6 +98,11 @@ async function arrancarMotor() {
     // La URL del WebSocket la da el propio ERP en el latido: nada cableado.
     try {
         const r = await motor.latir();
+        // Para quién imprime (ERP nuevo): se guarda para mostrarlo.
+        if (r?.local?.nombre && r.local.nombre !== cfg.localNombre) {
+            guardarConfig({ localNombre: r.local.nombre });
+            ventana?.webContents.send('config:local', r.local.nombre);
+        }
         await motor.arrancar(r.ws_url);
     } catch (e) {
         // Sin red al arrancar: reintentar en un minuto, sin morir.
@@ -106,13 +114,22 @@ async function arrancarMotor() {
 
 ipcMain.handle('config:leer', () => leerConfig());
 
+// Prueba un token SIN guardarlo: dice de qué local es, para que la ventana
+// pida confirmar «de este local a este otro» antes de cambiar.
+ipcMain.handle('config:probarToken', async (_e, { token, urlErp }) => {
+    const r = await new ApiErp(urlErp || URL_ERP, token).latido(); // TOKEN_INVALIDO si no vale
+    return { local: r?.local?.nombre || null };
+});
+
 ipcMain.handle('config:guardarToken', async (_e, { token, urlErp }) => {
     // Se valida ANTES de guardar: un token mal pegado se descubre aquí, no
     // mañana cuando no salga ninguna comanda.
     const apiPrueba = new ApiErp(urlErp || URL_ERP, token);
-    await apiPrueba.latido(); // lanza TOKEN_INVALIDO si no vale
+    const r = await apiPrueba.latido(); // lanza TOKEN_INVALIDO si no vale
 
-    guardarConfig({ token, urlErp: urlErp || URL_ERP });
+    // Cambiar de local: el motor del token anterior se apaga ANTES de que
+    // arranque el nuevo, así nunca reclama trabajos de los dos.
+    guardarConfig({ token, urlErp: urlErp || URL_ERP, localNombre: r?.local?.nombre || null });
     motor?.parar();
     await arrancarMotor();
     return { ok: true };

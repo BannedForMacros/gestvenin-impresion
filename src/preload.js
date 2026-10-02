@@ -3,6 +3,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('agente', {
     leerConfig: () => ipcRenderer.invoke('config:leer'),
     guardarToken: (datos) => ipcRenderer.invoke('config:guardarToken', datos),
+    probarToken: (datos) => ipcRenderer.invoke('config:probarToken', datos),
+    alCambiarLocal: (cb) => ipcRenderer.on('config:local', (_e, nombre) => cb(nombre)),
     descubrir: () => ipcRenderer.invoke('descubrir'),
     probarImpresora: (imp) => ipcRenderer.invoke('probarImpresora', imp),
     resumen: () => ipcRenderer.invoke('motor:resumen'),

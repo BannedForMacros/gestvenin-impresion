@@ -89,17 +89,27 @@
 
     <div id="avisos"></div>
 
-    <!-- PASO 1: token (solo la primera vez) -->
+    <!-- PARA QUIÉN IMPRIME -->
+    <section id="paso-conexion" class="card oculto" style="display:flex;align-items:center;gap:12px">
+        <div style="flex:1;min-width:0">
+            <h2 style="margin-bottom:2px">Imprimiendo para</h2>
+            <div style="font-size:17px;font-weight:800" id="txtLocal">—</div>
+        </div>
+        <button class="btn sec" id="btnCambiarLocal">Cambiar de local / token</button>
+    </section>
+
+    <!-- PASO 1: token (la primera vez, o al cambiar de local) -->
     <section id="paso-token" class="card oculto">
-        <h2>Conectar con el ERP</h2>
+        <h2 id="tituloToken">Conectar con el ERP</h2>
         <p style="margin-bottom:12px">
             Pega el <b>token de impresión del local</b>. Está en el ERP:
             <b>Configuración → Locales → (tu local) → Token de impresora</b>.
         </p>
         <label for="token">Token del local</label>
         <input type="text" id="token" placeholder="Pega aquí el token…" autocomplete="off">
-        <div style="margin-top:12px">
+        <div style="margin-top:12px;display:flex;gap:8px">
             <button class="btn" id="btnConectar">Conectar</button>
+            <button class="btn sec oculto" id="btnCancelarCambio">Cancelar</button>
         </div>
     </section>
 
@@ -190,16 +200,56 @@ function pintarHistorial(hist) {
 
 // ── conexión ──────────────────────────────────────────────────────────
 
+let localActual = null; // null = primera vez, sin token
+
+function pintarLocal(nombre) {
+    localActual = nombre || localActual;
+    $('txtLocal').textContent = localActual || 'Local conectado';
+}
+
+// Cambiar de local: se pide el token nuevo; lo de antes sigue funcionando
+// hasta que se confirme el cambio.
+$('btnCambiarLocal').onclick = () => {
+    $('tituloToken').textContent = 'Cambiar de local';
+    $('token').value = '';
+    $('btnCancelarCambio').classList.remove('oculto');
+    $('paso-token').classList.remove('oculto');
+    $('token').focus();
+};
+$('btnCancelarCambio').onclick = () => $('paso-token').classList.add('oculto');
+
 $('btnConectar').onclick = async () => {
     const token = $('token').value.trim();
     if (!token) return aviso('err', 'Pega el token del local.');
     const b = $('btnConectar'); b.disabled = true; b.innerHTML = '<span class="spin"></span> Validando…';
     try {
+        // Ya conectado: primero se averigua de qué local es el token nuevo y
+        // se confirma, para no mandar los tickets de un local a otro por error.
+        const cambiando = !$('paso-conexion').classList.contains('oculto');
+        if (cambiando) {
+            const { local } = await window.agente.probarToken({ token });
+            const destino = local || 'otro local';
+            if (local && local === localActual) {
+                aviso('warn', `Ese token es de «${local}», el mismo local de ahora. No hay nada que cambiar.`);
+                b.disabled = false; b.textContent = 'Conectar';
+                return;
+            }
+            const ok = confirm(`Este agente imprime para «${localActual || 'el local actual'}».\n\n`
+                + `¿Cambiar a «${destino}»?\n\nDesde ahora saldrán aquí los tickets de «${destino}» y dejarán de salir los de «${localActual || 'el local actual'}».`);
+            if (!ok) { b.disabled = false; b.textContent = 'Conectar'; return; }
+        }
+
         await window.agente.guardarToken({ token });
-        aviso('ok', 'Conectado con el ERP. Ahora busca las impresoras.');
+        const cfg = await window.agente.leerConfig();
+        pintarLocal(cfg.localNombre);
+        aviso('ok', cambiando ? `Listo: ahora imprime para «${localActual}».` : 'Conectado con el ERP. Ahora busca las impresoras.');
         $('paso-token').classList.add('oculto');
+        $('paso-conexion').classList.remove('oculto');
         $('paso-impresoras').classList.remove('oculto');
         $('paso-historial').classList.remove('oculto');
+        // Otro local, otras impresoras asignadas: se vuelve a buscar.
+        halladas.clear();
+        $('cuerpoHist').innerHTML = '<tr><td class="vacio">Todavía no ha salido ningún ticket.</td></tr>';
         $('btnBuscar').click();
     } catch (e) {
         aviso('err', /TOKEN_INVALIDO/.test(e.message)
@@ -285,6 +335,7 @@ $('btnInstalarUpdate').onclick = async () => {
 };
 
 window.agente.alActualizar(pintarUpdate);
+window.agente.alCambiarLocal(pintarLocal);
 
 // ── arranque ──────────────────────────────────────────────────────────
 
@@ -296,6 +347,8 @@ window.agente.alActualizar(pintarUpdate);
 
     const cfg = await window.agente.leerConfig();
     if (cfg.token) {
+        pintarLocal(cfg.localNombre);
+        $('paso-conexion').classList.remove('oculto');
         $('paso-impresoras').classList.remove('oculto');
         $('paso-historial').classList.remove('oculto');
         const r = await window.agente.resumen();
