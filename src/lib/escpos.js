@@ -129,6 +129,15 @@ function comandaDelivery(p, ancho) {
         if (item.nota) t.negrita().parrafo(`   >> ${item.nota}`, 3).negrita(false);
     }
 
+    // Comanda de MESA o del POS (`origen`): misma plantilla, sin el bloque de
+    // entrega, que es solo del delivery.
+    if (p.origen) {
+        t.separador('=');
+        if (p.atiende) t.linea(`Atiende: ${p.atiende}`);
+        t.centrar().linea(`${p.ticket || ''} · GestVenin`);
+        return t.cortar().bytes();
+    }
+
     t.separador('=');
     t.negrita().linea('ENTREGAR A:').negrita(false);
     t.alto().parrafo(p.cliente || '').alto(false);
