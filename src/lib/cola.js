@@ -29,6 +29,13 @@ const { imprimir } = require('./imprimir');
 
 const SONDEO_RESPALDO_MS = 90_000;
 const REINTENTO_WS_MS = 10_000;
+// Vigía del WebSocket. Un router o el proveedor pueden soltar la conexión SIN
+// avisar (conexión «medio abierta»): el agente se cree conectado, el timbre
+// nunca llega y todo sale por el sondeo de 90 s. Medido en producción: los
+// locales afectados imprimían a los 50-90 s en vez de 2-4 s. Así que el
+// agente pregunta él mismo cada 25 s y, si en 70 s no oyó nada, reconecta.
+const PING_WS_MS = 25_000;
+const SILENCIO_MAX_MS = 70_000;
 
 class MotorImpresion extends EventEmitter {
     /**
@@ -73,6 +80,7 @@ class MotorImpresion extends EventEmitter {
         this.corriendo = false;
         clearInterval(this.timerSondeo);
         clearInterval(this.timerLatido);
+        clearInterval(this.timerVigia);
         try { this.ws?.close(); } catch {}
     }
 
@@ -96,10 +104,17 @@ class MotorImpresion extends EventEmitter {
 
         const ws = new WebSocket(this.wsUrl);
         this.ws = ws;
+        this.ultimoMensaje = Date.now();
 
-        ws.on('open', () => { this.emit('ws', true); this._resuscribir(); });
+        ws.on('open', () => {
+            this.emit('ws', true);
+            this._resuscribir();
+            // Lo que se encoló mientras estuvo caído no tocó ningún timbre.
+            this.reclamarYProcesar('reconexion');
+        });
 
         ws.on('message', (crudo) => {
+            this.ultimoMensaje = Date.now();
             let msg;
             try { msg = JSON.parse(crudo.toString()); } catch { return; }
 
@@ -115,12 +130,29 @@ class MotorImpresion extends EventEmitter {
             }
         });
 
+        let caido = false;
         const caida = () => {
+            if (caido || ws !== this.ws) return; // una sola reconexión por socket
+            caido = true;
             this.emit('ws', false);
             if (this.corriendo) setTimeout(() => this._conectarWs(), REINTENTO_WS_MS);
         };
         ws.on('close', caida);
         ws.on('error', () => { /* close llega después y reintenta */ });
+
+        clearInterval(this.timerVigia);
+        this.timerVigia = setInterval(() => {
+            if (ws !== this.ws) return;
+            if (Date.now() - this.ultimoMensaje > SILENCIO_MAX_MS) {
+                // Muerta aunque diga OPEN: se corta y `close` reconecta.
+                try { ws.terminate(); } catch {}
+                caida();
+                return;
+            }
+            if (ws.readyState === WebSocket.OPEN) {
+                try { ws.send(JSON.stringify({ event: 'pusher:ping', data: {} })); } catch {}
+            }
+        }, PING_WS_MS);
     }
 
     _resuscribir() {
