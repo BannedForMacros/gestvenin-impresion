@@ -336,6 +336,7 @@ function comprobanteElectronico(p, ancho) {
     if (cli.nombre || !cli.documento) t.parrafo('Cliente: ' + (cli.nombre || 'CLIENTES VARIOS'));
     if (cli.documento) t.linea(cli.documento);
     if (cli.direccion) t.parrafo('Dir: ' + cli.direccion);
+    if (cli.telefono) t.linea('Tel: ' + cli.telefono);
     t.separador();
 
     // ── productos ──
