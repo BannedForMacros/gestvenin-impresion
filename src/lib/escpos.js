@@ -239,7 +239,8 @@ function cierreCaja(p, ancho) {
         }
         t.dosColumnas(m.nombre, money(m.monto_sistema));
         if (m.diferencia != null && hay(m.diferencia)) {
-            t.dosColumnas('  declarado ' + money(m.monto_real), 'dif ' + money(m.diferencia));
+            // Igual que en el efectivo: «falta»/«sobra», no un número con signo.
+            t.conMonto('declarado ' + money(m.monto_real), (num(m.diferencia) < 0 ? 'falta ' : 'sobra ') + money(Math.abs(num(m.diferencia))), 2);
         }
     }
     t.separador();
