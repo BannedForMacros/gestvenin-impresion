@@ -79,6 +79,32 @@ class Ticket {
     }
 
     /**
+     * Un concepto con su monto a la derecha. Si el concepto no cabe en el renglón,
+     * se parte en varios y el monto va al final del último, alineado a la derecha.
+     */
+    conMonto(texto, monto, sangria = 0) {
+        const pref = ' '.repeat(sangria);
+        texto = String(texto || '').replace(/\s+/g, ' ').trim();
+        monto = String(monto);
+        if (pref.length + texto.length + 1 + monto.length <= this.cols) {
+            return this.dosColumnas(pref + texto, monto);
+        }
+        const ancho = this.cols - sangria;
+        const renglones = [];
+        let actual = '';
+        for (const p of texto.split(' ')) {
+            if ((actual + ' ' + p).trim().length > ancho) { renglones.push(actual.trim()); actual = p; }
+            else actual += ' ' + p;
+        }
+        if (actual.trim()) renglones.push(actual.trim());
+        const ultimo = renglones.pop() || '';
+        renglones.forEach((r) => this.linea(pref + r));
+        return pref.length + ultimo.length + 1 + monto.length <= this.cols
+            ? this.dosColumnas(pref + ultimo, monto)
+            : this.linea(pref + ultimo).dosColumnas('', monto);
+    }
+
+    /**
      * Letra pequeña (fuente B): leyendas y hash. Cabe más por renglón, así
      * que el ancho de `parrafo()` se ajusta mientras está activa.
      */
@@ -156,6 +182,7 @@ function cierreCaja(p, ancho) {
     const t = new Ticket(ancho);
     const r = p.resumen || {};
     const money = (n) => 'S/ ' + Number(n || 0).toFixed(2);
+    const cantidad = (n) => String(Math.round(Number(n || 0) * 1000) / 1000);
 
     t.centrar().alto().linea(p.titulo || 'CIERRE DE CAJA').alto(false);
     t.linea(p.local || '').linea(p.fecha || '');
@@ -176,11 +203,38 @@ function cierreCaja(p, ancho) {
     }
     t.separador();
 
+    // Qué se dejó de cobrar y por qué (desde v0.2.7; un servidor viejo no lo manda).
+    const descuentos = r.descuentos_detalle || [];
+    if (descuentos.length) {
+        t.negrita().linea('DESCUENTOS Y CORTESÍAS').negrita(false);
+        for (const d of descuentos) {
+            t.negrita().conMonto(d.motivo + (d.consumo_interno ? ' (no es venta)' : ''), money(d.monto)).negrita(false);
+            for (const prod of d.productos || []) {
+                t.conMonto(`${cantidad(prod.cantidad)} x ${prod.nombre}`, money(prod.monto), 2);
+            }
+            for (const v of d.vales || []) {
+                t.parrafo(`Vale ${v.codigo}${v.cliente ? ' - ' + v.cliente : ''}: valía ${money(v.valor)}, se usó ${money(v.aplicado)}`, 2);
+            }
+        }
+        t.separador();
+    }
+
     t.dosColumnas('Monto inicial', money(r.monto_inicial));
     if (Number(r.total_gastos)) t.dosColumnas('Gastos', '-' + money(r.total_gastos));
     if (Number(r.total_movimientos_egreso)) t.dosColumnas('Egresos', '-' + money(r.total_movimientos_egreso));
     if (Number(r.total_movimientos_ingreso)) t.dosColumnas('Ingresos', '+' + money(r.total_movimientos_ingreso));
     t.negrita().dosColumnas('EFECTIVO ESPERADO', money(r.efectivo_esperado)).negrita(false);
+
+    // En qué se gastó: lo que anotó la cajera (desde v0.2.7).
+    const gastos = r.gastos_detalle || [];
+    if (gastos.length) {
+        t.separador();
+        t.negrita().linea('DETALLE DE GASTOS').negrita(false);
+        for (const g of gastos) {
+            const metodo = g.metodo && !/efectivo/i.test(g.metodo) ? ` (${g.metodo})` : '';
+            t.conMonto((g.detalle || 'Sin detalle') + metodo, money(g.monto));
+        }
+    }
 
     if ((r.productos || []).length) {
         t.separador();
