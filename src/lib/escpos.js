@@ -181,69 +181,114 @@ function comandaDelivery(p, ancho) {
 function cierreCaja(p, ancho) {
     const t = new Ticket(ancho);
     const r = p.resumen || {};
-    const money = (n) => 'S/ ' + Number(n || 0).toFixed(2);
-    const cantidad = (n) => String(Math.round(Number(n || 0) * 1000) / 1000);
+    const num = (n) => Number(n || 0);
+    const money = (n) => 'S/ ' + num(n).toFixed(2);
+    const menos = (n) => '-' + money(n);
+    const cantidad = (n) => String(Math.round(num(n) * 1000) / 1000);
+    const hay = (n) => Math.abs(num(n)) >= 0.005;
 
+    // Se lee de arriba abajo, como recorre el dinero: lo vendido, lo que se
+    // descontó, cómo se cobró, el efectivo que debe haber (con lo que se gastó) y,
+    // aparte, los movimientos que no entran en esa cuenta. El detalle de cada cosa
+    // va justo debajo de su total. Un ERP viejo no manda los *_detalle: entonces
+    // solo salen los totales.
     t.centrar().alto().linea(p.titulo || 'CIERRE DE CAJA').alto(false);
     t.linea(p.local || '').linea(p.fecha || '');
     t.linea(`Turno ${p.turno || ''} · ${p.cajero || ''}`);
     t.separador('=');
-
     t.izquierda();
-    t.dosColumnas('Ventas (' + (r.cantidad_ventas ?? 0) + ')', money(r.total_ventas));
-    if (Number(r.total_descuentos)) t.dosColumnas('Descuentos', '-' + money(r.total_descuentos));
-    t.separador();
 
-    t.negrita().linea('POR MÉTODO DE PAGO').negrita(false);
-    for (const m of r.metodos || []) {
-        t.dosColumnas(m.nombre, money(m.monto_sistema));
-        if (m.diferencia != null && Number(m.diferencia) !== 0) {
-            t.dosColumnas('  contado ' + money(m.monto_real), 'dif ' + money(m.diferencia));
-        }
-    }
-    t.separador();
-
-    // Qué se dejó de cobrar y por qué (desde v0.2.7; un servidor viejo no lo manda).
-    const descuentos = r.descuentos_detalle || [];
-    if (descuentos.length) {
-        t.negrita().linea('DESCUENTOS Y CORTESÍAS').negrita(false);
-        for (const d of descuentos) {
-            t.negrita().conMonto(d.motivo + (d.consumo_interno ? ' (no es venta)' : ''), money(d.monto)).negrita(false);
+    // 1. VENTAS ─────────────────────────────────────────────
+    t.negrita().linea('VENTAS DEL TURNO').negrita(false);
+    const tickets = `(${r.cantidad_ventas ?? 0} ${num(r.cantidad_ventas) === 1 ? 'ticket' : 'tickets'})`;
+    if (hay(r.total_descuentos)) {
+        t.conMonto(`Ventas sin descuento ${tickets}`, money(num(r.total_ventas) + num(r.total_descuentos)));
+        t.conMonto('Descuentos y cortesías', menos(r.total_descuentos));
+        for (const d of r.descuentos_detalle || []) {
+            t.conMonto(d.motivo + (d.consumo_interno ? ' (no es venta)' : ''), money(d.monto), 2);
             for (const prod of d.productos || []) {
-                t.conMonto(`${cantidad(prod.cantidad)} x ${prod.nombre}`, money(prod.monto), 2);
+                t.conMonto(`${cantidad(prod.cantidad)} x ${prod.nombre}`, money(prod.monto), 4);
             }
             for (const v of d.vales || []) {
-                t.parrafo(`Vale ${v.codigo}${v.cliente ? ' - ' + v.cliente : ''}: valía ${money(v.valor)}, se usó ${money(v.aplicado)}`, 2);
+                t.parrafo(`Vale ${v.codigo}${v.cliente ? ' - ' + v.cliente : ''}: valía ${money(v.valor)}, se usó ${money(v.aplicado)}`, 4);
             }
         }
-        t.separador();
+        t.negrita().dosColumnas('TOTAL VENDIDO', money(r.total_ventas)).negrita(false);
+    } else {
+        t.negrita().conMonto(`TOTAL VENDIDO ${tickets}`, money(r.total_ventas)).negrita(false);
     }
+    t.separador();
 
-    t.dosColumnas('Monto inicial', money(r.monto_inicial));
-    if (Number(r.total_gastos)) t.dosColumnas('Gastos', '-' + money(r.total_gastos));
-    if (Number(r.total_movimientos_egreso)) t.dosColumnas('Egresos', '-' + money(r.total_movimientos_egreso));
-    if (Number(r.total_movimientos_ingreso)) t.dosColumnas('Ingresos', '+' + money(r.total_movimientos_ingreso));
-    t.negrita().dosColumnas('EFECTIVO ESPERADO', money(r.efectivo_esperado)).negrita(false);
+    // 2. CÓMO SE COBRÓ ──────────────────────────────────────
+    // Ojo: en el efectivo, `monto_sistema` es el ESPERADO (ya restados gastos y
+    // delivery), no lo cobrado. Lo cobrado en efectivo es esa misma cuenta al
+    // revés: esperado + gastos + delivery del motorizado + rendido al gestor.
+    const metodos = r.metodos || [];
+    const efectivos = metodos.filter((m) => m.es_efectivo);
+    const gestor = (r.movimientos_detalle || []).filter((m) => m.cuenta_en_esperado);
+    const totalGestor = gestor.reduce((s, m) => s + num(m.monto), 0);
+    const ventasEfectivo = num(r.efectivo_esperado) + num(r.total_gastos) + num(r.delivery_motorizados) + totalGestor;
 
-    // En qué se gastó: lo que anotó la cajera (desde v0.2.7).
-    const gastos = r.gastos_detalle || [];
-    if (gastos.length) {
-        t.separador();
-        t.negrita().linea('DETALLE DE GASTOS').negrita(false);
-        for (const g of gastos) {
-            const metodo = g.metodo && !/efectivo/i.test(g.metodo) ? ` (${g.metodo})` : '';
-            t.conMonto((g.detalle || 'Sin detalle') + metodo, money(g.monto));
+    t.negrita().linea('COBRADO POR MÉTODO DE PAGO').negrita(false);
+    let efectivoListado = false;
+    for (const m of metodos) {
+        if (m.es_efectivo) {
+            if (!efectivoListado) t.dosColumnas(m.nombre, money(ventasEfectivo));
+            efectivoListado = true;
+            continue;
+        }
+        t.dosColumnas(m.nombre, money(m.monto_sistema));
+        if (m.diferencia != null && hay(m.diferencia)) {
+            t.dosColumnas('  declarado ' + money(m.monto_real), 'dif ' + money(m.diferencia));
         }
     }
+    t.separador();
 
-    if ((r.productos || []).length) {
+    // 3. EFECTIVO QUE DEBE HABER ────────────────────────────
+    t.negrita().linea('EFECTIVO EN CAJA').negrita(false);
+    t.dosColumnas('Ventas en efectivo', money(ventasEfectivo));
+    if (hay(r.total_gastos)) {
+        t.conMonto('Gastos', menos(r.total_gastos));
+        for (const g of r.gastos_detalle || []) {
+            const metodo = g.metodo && !/efectivo/i.test(g.metodo) ? ` (${g.metodo})` : '';
+            t.conMonto((g.detalle || 'Sin detalle') + metodo, money(g.monto), 2);
+        }
+    }
+    if (hay(r.delivery_motorizados)) {
+        t.conMonto(`Delivery del motorizado (${r.pedidos_delivery_motorizados ?? 0})`, menos(r.delivery_motorizados));
+    }
+    if (hay(totalGestor)) t.conMonto('Delivery rendido al gestor', menos(totalGestor));
+    t.negrita().dosColumnas('EFECTIVO ESPERADO', money(r.efectivo_esperado)).negrita(false);
+    const contado = efectivos.find((m) => m.monto_real != null);
+    if (contado) {
+        const dif = efectivos.reduce((s, m) => s + num(m.diferencia), 0);
+        t.dosColumnas('Efectivo contado', money(efectivos.reduce((s, m) => s + num(m.monto_real), 0)));
+        t.negrita().dosColumnas(dif > 0.005 ? 'SOBRA' : dif < -0.005 ? 'FALTA' : 'DIFERENCIA', money(Math.abs(dif))).negrita(false);
+    }
+    t.separador();
+
+    // 4. MOVIMIENTOS (informativo) ──────────────────────────
+    const movs = (r.movimientos_detalle || []).filter((m) => !m.cuenta_en_esperado);
+    if (hay(r.monto_inicial) || movs.length || (!r.movimientos_detalle && (hay(r.total_movimientos_ingreso) || hay(r.total_movimientos_egreso)))) {
+        t.negrita().linea('MOVIMIENTOS DE CAJA').negrita(false);
+        t.chico().linea('(no entran en el efectivo esperado)').chico(false);
+        if (hay(r.monto_inicial)) t.dosColumnas('Monto inicial', money(r.monto_inicial));
+        if (r.movimientos_detalle) {
+            for (const m of movs) {
+                t.conMonto(m.concepto + (m.detalle && m.detalle !== m.concepto ? `: ${m.detalle}` : ''), (m.tipo === 'egreso' ? '-' : '+') + money(m.monto));
+            }
+        } else {
+            if (hay(r.total_movimientos_ingreso)) t.dosColumnas('Ingresos', '+' + money(r.total_movimientos_ingreso));
+            if (hay(r.total_movimientos_egreso)) t.dosColumnas('Egresos', '-' + money(r.total_movimientos_egreso));
+        }
         t.separador();
+    }
+
+    // 5. LO VENDIDO ─────────────────────────────────────────
+    if ((r.productos || []).length) {
         t.negrita().linea('LO VENDIDO').negrita(false);
         for (const prod of r.productos) {
-            t.dosColumnas(
-                `${Number(prod.cantidad)} x ${String(prod.nombre).slice(0, t.cols - 14)}`,
-                money(prod.total),
-            );
+            t.conMonto(`${cantidad(prod.cantidad)} x ${prod.nombre}`, money(prod.total));
         }
     }
 
